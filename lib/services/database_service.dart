@@ -1,6 +1,8 @@
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
+import '../models/daily_step.dart';
+
 class DatabaseService {
   DatabaseService._();
 
@@ -40,22 +42,23 @@ class DatabaseService {
 
     await db.insert(
       'daily_steps',
-      {
-        'date': date,
-        'steps': steps,
-        'reward_points': points,
-        'synced': existing?['synced'] ?? 0,
-      },
+      DailyStep(
+        date: date,
+        steps: steps,
+        rewardPoints: points,
+        synced: existing?.synced ?? false,
+      ).toMap(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
 
-  Future<List<Map<String, Object?>>> getStepsHistory() async {
+  Future<List<DailyStep>> getStepsHistory() async {
     final db = await database;
-    return db.query('daily_steps', orderBy: 'date DESC');
+    final records = await db.query('daily_steps', orderBy: 'date DESC');
+    return records.map(DailyStep.fromMap).toList();
   }
 
-  Future<Map<String, Object?>?> getStepsForDate(String date) async {
+  Future<DailyStep?> getStepsForDate(String date) async {
     final db = await database;
     final result = await db.query(
       'daily_steps',
@@ -68,7 +71,7 @@ class DatabaseService {
       return null;
     }
 
-    return result.first;
+    return DailyStep.fromMap(result.first);
   }
 
   Future<void> markSynced(String date) async {
