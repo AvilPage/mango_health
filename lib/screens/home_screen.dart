@@ -5,6 +5,7 @@ import '../models/daily_step.dart';
 import '../services/database_service.dart';
 import '../services/health_service.dart';
 import '../services/rewards_service.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -120,6 +121,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Mango Health'),
+        actions: [
+          IconButton(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const SettingsScreen(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Settings',
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _isLoading ? null : () => _loadData(),

@@ -3,6 +3,10 @@ import 'package:pocketbase/pocketbase.dart';
 import '../models/daily_step.dart';
 
 class PocketBaseService {
+  PocketBaseService._();
+
+  static final PocketBaseService instance = PocketBaseService._();
+
   PocketBase? _client;
   String? _url;
 
