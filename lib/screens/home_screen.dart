@@ -21,9 +21,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   bool _isLoading = true;
   bool _hasPermission = false;
+  bool _healthConnectUnavailable = false;
   int _todaySteps = 0;
-  int _todayPoints = 0;
-  int _totalPoints = 0;
+  int _weekSteps = 0;
+  int _monthSteps = 0;
   List<DailyStep> _history = const [];
   String? _errorMessage;
 
@@ -51,21 +52,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
+      _healthConnectUnavailable = false;
     });
 
     try {
-      final hasPermission = requestPermissions
-          ? await _healthService.requestPermissions()
-          : _hasPermission;
+      PermissionStatus status;
+      if (requestPermissions) {
+        status = await _healthService.requestPermissions();
+      } else {
+        status = _hasPermission
+            ? PermissionStatus.granted
+            : PermissionStatus.denied;
+      }
+
+      final hasPermission = status == PermissionStatus.granted;
 
       List<DailyStep> history = await _databaseService.getStepsHistory();
       int todaySteps = 0;
-      int todayPoints = 0;
 
       if (hasPermission) {
-        todaySteps = await _healthService.getTodaySteps();
-        todayPoints = _rewardsService.calculatePoints(todaySteps);
-        await _databaseService.upsertSteps(_todayKey, todaySteps, todayPoints);
+        // Backfill historical data from HealthKit (past 30 days)
+        final historical = await _healthService.getHistoricalSteps(days: 30);
+        for (final entry in historical.entries) {
+          final pts = _rewardsService.calculatePoints(entry.value);
+          await _databaseService.upsertSteps(entry.key, entry.value, pts);
+        }
+
+        // Today's steps (ensure fresh value)
+        final todayKey = _todayKey;
+        todaySteps = historical[todayKey] ?? await _healthService.getTodaySteps();
+        final pts = _rewardsService.calculatePoints(todaySteps);
+        await _databaseService.upsertSteps(todayKey, todaySteps, pts);
         history = await _databaseService.getStepsHistory();
       }
 
@@ -73,12 +90,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return;
       }
 
+      final periodStats = _computePeriodStats(history, todaySteps);
+
       setState(() {
         _hasPermission = hasPermission;
+        _healthConnectUnavailable =
+            status == PermissionStatus.healthConnectUnavailable;
         _todaySteps = todaySteps;
-        _todayPoints = todayPoints;
         _history = _lastSevenDays(history);
-        _totalPoints = _rewardsService.getTotalPoints(history);
+        _weekSteps = periodStats['weekSteps']!;
+        _monthSteps = periodStats['monthSteps']!;
       });
     } catch (error) {
       if (!mounted) {
@@ -111,6 +132,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return byDate[key] ??
           DailyStep(date: key, steps: 0, rewardPoints: 0, synced: false);
     });
+  }
+
+  Map<String, int> _computePeriodStats(
+    List<DailyStep> history,
+    int todaySteps,
+  ) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final weekStart = today.subtract(Duration(days: today.weekday - 1));
+    final monthStart = DateTime(now.year, now.month, 1);
+
+    int weekSteps = 0;
+    int monthSteps = 0;
+
+    for (final item in history) {
+      final date = DateTime.parse(item.date);
+      if (!date.isBefore(weekStart)) weekSteps += item.steps;
+      if (!date.isBefore(monthStart)) monthSteps += item.steps;
+    }
+
+    // Ensure today's live value is included if not yet in DB history
+    final todayKey = DateFormat('yyyy-MM-dd').format(now);
+    final alreadyCounted = history.any((h) => h.date == todayKey);
+    if (!alreadyCounted && todaySteps > 0) {
+      weekSteps += todaySteps;
+      monthSteps += todaySteps;
+    }
+
+    return {'weekSteps': weekSteps, 'monthSteps': monthSteps};
   }
 
   @override
@@ -154,8 +204,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             _SummaryCard(
               todaySteps: _todaySteps,
               progress: progress,
-              todayPoints: _todayPoints,
-              totalPoints: _totalPoints,
               isLoading: _isLoading,
             ),
             if (!_hasPermission) ...[
@@ -167,19 +215,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Health access needed',
+                        _healthConnectUnavailable
+                            ? 'Health Connect required'
+                            : 'Health access needed',
                         style: theme.textTheme.titleMedium,
                       ),
                       const SizedBox(height: 8),
-                      const Text(
-                        'Grant step access to load your daily progress and rewards.',
+                      Text(
+                        _healthConnectUnavailable
+                            ? 'Please install Health Connect from the Play Store to track your steps.'
+                            : 'Grant step access to load your daily progress.',
                       ),
                       const SizedBox(height: 12),
                       FilledButton(
                         onPressed: _isLoading
                             ? null
                             : () => _loadData(requestPermissions: true),
-                        child: const Text('Grant permission'),
+                        child: Text(
+                          _healthConnectUnavailable
+                              ? 'Install Health Connect'
+                              : 'Grant permission',
+                        ),
                       ),
                     ],
                   ),
@@ -202,6 +258,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             ],
             const SizedBox(height: 24),
+            _PeriodSummarySection(
+              todaySteps: _todaySteps,
+              weekSteps: _weekSteps,
+              monthSteps: _monthSteps,
+              isLoading: _isLoading,
+            ),
+            const SizedBox(height: 24),
             Text(
               'Last 7 days',
               style: theme.textTheme.titleLarge,
@@ -220,15 +283,11 @@ class _SummaryCard extends StatelessWidget {
   const _SummaryCard({
     required this.todaySteps,
     required this.progress,
-    required this.todayPoints,
-    required this.totalPoints,
     required this.isLoading,
   });
 
   final int todaySteps;
   final double progress;
-  final int todayPoints;
-  final int totalPoints;
   final bool isLoading;
 
   @override
@@ -255,59 +314,8 @@ class _SummaryCard extends StatelessWidget {
             Text(
               '${NumberFormat.decimalPattern().format(todaySteps)} / 10,000 goal',
             ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  child: _MetricTile(
-                    label: 'Today\'s reward',
-                    value: '$todayPoints pts',
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _MetricTile(
-                    label: 'Total rewards',
-                    value: '$totalPoints pts',
-                  ),
-                ),
-              ],
-            ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _MetricTile extends StatelessWidget {
-  const _MetricTile({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: theme.textTheme.bodyMedium),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -320,19 +328,143 @@ class _HistoryTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final date = DateTime.parse(step.date);
 
     return Card(
       child: ListTile(
         title: Text(DateFormat.MMMd().format(date)),
         subtitle: Text('${NumberFormat.decimalPattern().format(step.steps)} steps'),
-        trailing: Text(
-          '${step.rewardPoints} pts',
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
+      ),
+    );
+  }
+}
+
+class _PeriodSummarySection extends StatelessWidget {
+  const _PeriodSummarySection({
+    required this.todaySteps,
+    required this.weekSteps,
+    required this.monthSteps,
+    required this.isLoading,
+  });
+
+  final int todaySteps;
+  final int weekSteps;
+  final int monthSteps;
+  final bool isLoading;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Period summary', style: theme.textTheme.titleLarge),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _PeriodCard(
+                label: 'Today',
+                steps: todaySteps,
+                goal: 10000,
+                isLoading: isLoading,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _PeriodCard(
+                label: 'This week',
+                steps: weekSteps,
+                goal: 70000,
+                isLoading: isLoading,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _PeriodCard(
+                label: 'This month',
+                steps: monthSteps,
+                goal: null,
+                isLoading: isLoading,
+              ),
+            ),
+          ],
         ),
+      ],
+    );
+  }
+}
+
+class _PeriodCard extends StatelessWidget {
+  const _PeriodCard({
+    required this.label,
+    required this.steps,
+    required this.goal,
+    required this.isLoading,
+  });
+
+  final String label;
+  final int steps;
+  final int? goal;
+  final bool isLoading;
+
+  String _fmt(int n) {
+    if (n >= 1000) {
+      return '${(n / 1000).toStringAsFixed(n % 1000 == 0 ? 0 : 1)}k';
+    }
+    return n.toString();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final progress = goal != null ? (steps / goal!).clamp(0.0, 1.0) : null;
+    final goalMet = goal != null && steps >= goal!;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: goalMet ? cs.primaryContainer : cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: cs.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _fmt(steps),
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: goalMet ? cs.onPrimaryContainer : cs.onSurface,
+            ),
+          ),
+          Text(
+            'steps',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+            ),
+          ),
+          if (progress != null) ...[
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: isLoading ? null : progress,
+                minHeight: 5,
+                backgroundColor: cs.surface,
+                color: goalMet ? cs.primary : cs.secondary,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
