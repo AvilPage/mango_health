@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'screens/home_screen.dart';
+import 'screens/main_shell.dart';
 import 'services/database_service.dart';
 
 Future<void> main() async {
@@ -22,7 +22,7 @@ class MangoHealthApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
         scaffoldBackgroundColor: const Color(0xFFF6FBF6),
       ),
-      home: const HomeScreen(),
+      home: const MainShell(),
     );
   }
 }
