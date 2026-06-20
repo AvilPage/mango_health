@@ -1,0 +1,6 @@
+# Exclude everything by default
+*
+
+# Allow only what Dockerfile needs
+!Dockerfile
+!pb_migrations/
