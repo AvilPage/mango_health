@@ -1,4 +1,4 @@
-package com.avilpage.mango_health
+package com.avilpage.mangohealth
 
 import io.flutter.embedding.android.FlutterFragmentActivity
 
