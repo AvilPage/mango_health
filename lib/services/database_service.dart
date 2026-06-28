@@ -52,6 +52,16 @@ class DatabaseService {
     return _database!;
   }
 
+  Future<List<DailyStep>> getUnsyncedSteps() async {
+    final db = await database;
+    final records = await db.query(
+      'daily_steps',
+      where: 'synced = 0',
+      orderBy: 'date ASC',
+    );
+    return records.map(DailyStep.fromMap).toList();
+  }
+
   Future<void> upsertSteps(String date, int steps, int points) async {
     final db = await database;
     final existing = await getStepsForDate(date);
@@ -107,6 +117,16 @@ class DatabaseService {
       );
     }
     await batch.commit(noResult: true);
+  }
+
+  Future<void> updateRewardPoints(String date, int points) async {
+    final db = await database;
+    await db.update(
+      'daily_steps',
+      {'reward_points': points},
+      where: 'date = ?',
+      whereArgs: [date],
+    );
   }
 
   Future<void> markSynced(String date) async {

@@ -99,6 +99,18 @@ class PocketBaseService {
 
   // ── Steps sync ──────────────────────────────────────────────────────────────
 
+  /// Syncs all locally unsynced daily steps to PocketBase, then marks them
+  /// synced in the local DB. Safe to call repeatedly (upserts by user+date).
+  Future<void> syncDailySteps() async {
+    if (!isAuthenticated) return;
+    final unsynced = await DatabaseService.instance.getUnsyncedSteps();
+    if (unsynced.isEmpty) return;
+    await syncSteps(unsynced);
+    for (final step in unsynced) {
+      await DatabaseService.instance.markSynced(step.date);
+    }
+  }
+
   Future<void> syncSteps(List<DailyStep> unsynced) async {
     final userId = currentUserId;
     if (userId == null || unsynced.isEmpty) return;
@@ -110,7 +122,6 @@ class PocketBaseService {
         'user': userId,
         'date': step.date,
         'steps': step.steps,
-        'reward_points': step.rewardPoints,
       };
 
       try {
@@ -129,6 +140,27 @@ class PocketBaseService {
         }
       }
     }
+  }
+
+  /// Fetches server-assigned reward_points for the current user and updates
+  /// the local DB. Returns a map of date → reward_points.
+  Future<Map<String, int>> fetchCashback() async {
+    final userId = currentUserId;
+    if (userId == null) return {};
+
+    final records = await _client.collection('steps').getFullList(
+      filter: _client.filter('user = {:u} && reward_points > 0', {'u': userId}),
+      fields: 'date,reward_points',
+    );
+
+    final result = <String, int>{};
+    for (final r in records) {
+      final date = r.getStringValue('date');
+      final pts = r.getIntValue('reward_points');
+      result[date] = pts;
+      await DatabaseService.instance.updateRewardPoints(date, pts);
+    }
+    return result;
   }
 
   // ── Groups ───────────────────────────────────────────────────────────────────

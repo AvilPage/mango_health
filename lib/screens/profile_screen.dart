@@ -15,6 +15,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
+  final _upiController = TextEditingController();
 
   bool _isSaving = false;
   bool _isSaved = false;
@@ -34,6 +35,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _phoneController.text = data['phone'] ?? '';
         _emailController.text = data['email'] ??
             PocketBaseService.instance.currentUserEmail ?? '';
+        _upiController.text = data['upi'] ?? '';
       });
     }
   }
@@ -47,6 +49,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       'name': _nameController.text.trim(),
       'phone': _phoneController.text.trim(),
       'email': _emailController.text.trim(),
+      'upi': _upiController.text.trim(),
     });
     if (mounted) {
       setState(() {
@@ -82,6 +85,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _nameController.dispose();
     _phoneController.dispose();
     _emailController.dispose();
+    _upiController.dispose();
     super.dispose();
   }
 
@@ -169,6 +173,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
             decoration: const InputDecoration(
               labelText: 'Email',
               border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _upiController,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(
+              labelText: 'UPI Address',
+              hintText: 'e.g. name@upi',
+              border: OutlineInputBorder(),
+              prefixIcon: Icon(Icons.account_balance_wallet_outlined),
             ),
           ),
           const SizedBox(height: 24),

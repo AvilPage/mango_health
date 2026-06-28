@@ -4,7 +4,7 @@ import 'package:intl/intl.dart';
 import '../models/daily_step.dart';
 import '../services/database_service.dart';
 import '../services/health_service.dart';
-import '../services/rewards_service.dart';
+import '../services/pocketbase_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -16,7 +16,6 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final DatabaseService _databaseService = DatabaseService.instance;
   final HealthService _healthService = HealthService();
-  final RewardsService _rewardsService = const RewardsService();
 
   bool _isLoading = true;
   bool _hasPermission = false;
@@ -71,15 +70,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         // Backfill historical data from HealthKit (past 35 days)
         final historical = await _healthService.getHistoricalSteps(days: 35);
         for (final entry in historical.entries) {
-          final pts = _rewardsService.calculatePoints(entry.value);
-          await _databaseService.upsertSteps(entry.key, entry.value, pts);
+          await _databaseService.upsertSteps(entry.key, entry.value, 0);
         }
 
         // Today's steps (ensure fresh value)
         final todayKey = _todayKey;
         todaySteps = historical[todayKey] ?? await _healthService.getTodaySteps();
-        final pts = _rewardsService.calculatePoints(todaySteps);
-        await _databaseService.upsertSteps(todayKey, todaySteps, pts);
+        await _databaseService.upsertSteps(todayKey, todaySteps, 0);
         history = await _databaseService.getStepsHistory();
       }
 
@@ -92,8 +89,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _healthConnectUnavailable =
             status == PermissionStatus.healthConnectUnavailable;
         _todaySteps = todaySteps;
-        _history = _lastThirtyFiveDays(history);
+        _history = _lastSevenDays(history);
       });
+
+      // Sync steps then pull server-assigned cashback, both in the background
+      PocketBaseService.instance.syncDailySteps().then((_) async {
+        await PocketBaseService.instance.fetchCashback();
+        if (!mounted) return;
+        final updated = await _databaseService.getStepsHistory();
+        setState(() => _history = _lastSevenDays(updated));
+      }).catchError((_) {});
     } catch (error) {
       if (!mounted) {
         return;
@@ -113,11 +118,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   String get _todayKey => DateFormat('yyyy-MM-dd').format(DateTime.now());
 
-  List<DailyStep> _lastThirtyFiveDays(List<DailyStep> history) {
+  List<DailyStep> _lastSevenDays(List<DailyStep> history) {
     final byDate = {for (final item in history) item.date: item};
     final now = DateTime.now();
 
-    return List<DailyStep>.generate(35, (index) {
+    return List<DailyStep>.generate(7, (index) {
       final date = DateTime(now.year, now.month, now.day).subtract(
         Duration(days: index),
       );
@@ -166,7 +171,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   const SizedBox(width: 12),
                   Expanded(
                     child: _CashCard(
-                      points: _rewardsService.calculatePoints(_todaySteps),
+                      points: _history.isNotEmpty ? _history.first.rewardPoints : 0,
                       isLoading: _isLoading,
                     ),
                   ),
@@ -225,10 +230,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             ],
             const SizedBox(height: 24),
-            SizedBox(
-              height: MediaQuery.sizeOf(context).height * 0.25,
-              child: _StepsHeatmap(history: _history, isLoading: _isLoading),
-            ),
+            _Last7DaysList(history: _history, isLoading: _isLoading),
             const SizedBox(height: 96),
           ],
         ),
@@ -303,7 +305,7 @@ class _CashCard extends StatelessWidget {
             isLoading
                 ? const CircularProgressIndicator()
                 : Text(
-                    '₹$points',
+                    points > 0 ? '₹$points' : '—',
                     style: theme.textTheme.displaySmall?.copyWith(
                       fontWeight: FontWeight.w700,
                       color: earned ? cs.onPrimaryContainer : cs.onSurfaceVariant,
@@ -312,7 +314,7 @@ class _CashCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               points == 0
-                  ? 'Walk 5,000+ steps to earn'
+                  ? 'Cashback processed daily'
                   : points == 10
                       ? '5k–10k steps reached'
                       : '10k steps goal met! 🎉',
@@ -327,165 +329,129 @@ class _CashCard extends StatelessWidget {
   }
 }
 
-class _StepsHeatmap extends StatelessWidget {
-  const _StepsHeatmap({required this.history, required this.isLoading});
+class _Last7DaysList extends StatelessWidget {
+  const _Last7DaysList({required this.history, required this.isLoading});
 
   final List<DailyStep> history;
   final bool isLoading;
 
-  static const _dayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-
-  Color _tileColor(int steps, ColorScheme cs) {
-    if (steps <= 0) return cs.surfaceContainerHighest;
-    if (steps < 3000) return cs.primary.withValues(alpha: 0.25);
-    if (steps < 6000) return cs.primary.withValues(alpha: 0.50);
-    if (steps < 9000) return cs.primary.withValues(alpha: 0.75);
-    return cs.primary;
-  }
+  static const _goal = 10000;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
-    final byDate = {for (final s in history) s.date: s.steps};
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    // Align to Monday of current week
-    final weekday = today.weekday; // 1=Mon, 7=Sun
-    final currentWeekMonday = today.subtract(Duration(days: weekday - 1));
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // Transposed: rows=weeks(5), cols=days(7)
-        // chrome: title(20) + gap(3) + day-headers(14) + gap(4) + legend(6+10) = ~57
-        const chromeHeight = 72.0;
-        const weeks = 5;
-        const labelWidth = 36.0; // week date label on left
-        const gapBetween = 4.0;
-        const tileGap = 3.0;
-
-        final availableHeight = constraints.maxHeight - chromeHeight;
-        // 5 rows + 4 gaps
-        final tileSizeByHeight = (availableHeight - 4 * tileGap) / weeks;
-        // 7 cols + 6 gaps
-        final tileSizeByWidth =
-            (constraints.maxWidth - labelWidth - gapBetween - 6 * tileGap) / 7;
-        final tileSize = tileSizeByHeight.clamp(8.0, tileSizeByWidth);
-
-        if (isLoading) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Last 7 days', style: theme.textTheme.titleMedium),
+        const SizedBox(height: 8),
+        // Column headers
+        Row(
           children: [
-            Text('Activity', style: theme.textTheme.titleSmall),
-            const SizedBox(height: 3),
-            // Day-of-week column headers
-            Row(
-              children: [
-                SizedBox(width: labelWidth + gapBetween),
-                ...List.generate(7, (di) => Padding(
-                      padding: EdgeInsets.only(right: di < 6 ? tileGap : 0),
-                      child: SizedBox(
-                        width: tileSize,
-                        child: Center(
-                          child: Text(
-                            _dayLabels[di],
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: cs.onSurfaceVariant,
-                              fontSize: 9,
-                            ),
-                          ),
-                        ),
-                      ),
-                    )),
-              ],
+            const SizedBox(width: 40 + 4 + 42 + 8), // day + date
+            const Expanded(child: SizedBox()),
+            SizedBox(
+              width: 56,
+              child: Text('Steps',
+                  textAlign: TextAlign.end,
+                  style: theme.textTheme.labelSmall
+                      ?.copyWith(color: cs.onSurfaceVariant)),
             ),
-            const SizedBox(height: 4),
-            // Grid: 5 week rows
-            ...List.generate(weeks, (wi) {
-              final weekMonday = currentWeekMonday
-                  .subtract(Duration(days: (weeks - 1 - wi) * 7));
-              return Padding(
-                padding: EdgeInsets.only(bottom: wi < weeks - 1 ? tileGap : 0),
-                child: Row(
-                  children: [
-                    // Week label
-                    SizedBox(
-                      width: labelWidth,
-                      height: tileSize,
-                      child: Center(
-                        child: Text(
-                          DateFormat('MMM d').format(weekMonday),
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: cs.onSurfaceVariant,
-                            fontSize: 9,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: gapBetween),
-                    // 7 day tiles
-                    ...List.generate(7, (di) {
-                      final date = weekMonday.add(Duration(days: di));
-                      final isFuture = date.isAfter(today);
-                      final key = DateFormat('yyyy-MM-dd').format(date);
-                      final steps = byDate[key] ?? 0;
-                      return Padding(
-                        padding: EdgeInsets.only(right: di < 6 ? tileGap : 0),
-                        child: Tooltip(
-                          message: isFuture
-                              ? ''
-                              : '${DateFormat('MMM d').format(date)}: ${NumberFormat.decimalPattern().format(steps)} steps',
-                          child: Container(
-                            width: tileSize,
-                            height: tileSize,
-                            decoration: BoxDecoration(
-                              color: isFuture
-                                  ? Colors.transparent
-                                  : _tileColor(steps, cs),
-                              borderRadius: BorderRadius.circular(2),
-                            ),
-                          ),
-                        ),
-                      );
-                    }),
-                  ],
-                ),
-              );
-            }),
-            const SizedBox(height: 6),
-            // Legend
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Text('Less',
-                    style: theme.textTheme.labelSmall
-                        ?.copyWith(color: cs.onSurfaceVariant, fontSize: 9)),
-                const SizedBox(width: 4),
-                ...[0, 2999, 5999, 8999, 10000].map((s) => Padding(
-                      padding: const EdgeInsets.only(left: 3),
-                      child: Container(
-                        width: 10,
-                        height: 10,
-                        decoration: BoxDecoration(
-                          color: _tileColor(s, cs),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    )),
-                const SizedBox(width: 4),
-                Text('More',
-                    style: theme.textTheme.labelSmall
-                        ?.copyWith(color: cs.onSurfaceVariant, fontSize: 9)),
-              ],
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 40,
+              child: Text('Cash',
+                  textAlign: TextAlign.end,
+                  style: theme.textTheme.labelSmall
+                      ?.copyWith(color: cs.onSurfaceVariant)),
             ),
           ],
-        );
-      },
+        ),
+        const SizedBox(height: 4),
+        if (isLoading)
+          const Center(child: CircularProgressIndicator())
+        else
+          ...history.map((step) {
+            final date = DateTime.parse(step.date);
+            final isToday = step.date ==
+                DateFormat('yyyy-MM-dd').format(DateTime.now());
+            final progress = (step.steps / _goal).clamp(0.0, 1.0);
+            final goalMet = step.steps >= _goal;
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  // Day label
+                  SizedBox(
+                    width: 40,
+                    child: Text(
+                      isToday ? 'Today' : DateFormat('EEE').format(date),
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        fontWeight: isToday ? FontWeight.bold : null,
+                        color: isToday ? cs.primary : cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  // Date
+                  SizedBox(
+                    width: 42,
+                    child: Text(
+                      DateFormat('MMM d').format(date),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Progress bar
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        minHeight: 10,
+                        backgroundColor: cs.surfaceContainerHighest,
+                        color: goalMet ? cs.primary : cs.primary.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Steps count
+                  SizedBox(
+                    width: 56,
+                    child: Text(
+                      NumberFormat.compact().format(step.steps),
+                      textAlign: TextAlign.end,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        fontWeight: goalMet ? FontWeight.bold : null,
+                        color: goalMet ? cs.primary : cs.onSurface,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Cashback
+                  SizedBox(
+                    width: 40,
+                    child: Text(
+                      step.rewardPoints > 0 ? '₹${step.rewardPoints}' : '—',
+                      textAlign: TextAlign.end,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        fontWeight: step.rewardPoints > 0 ? FontWeight.bold : null,
+                        color: step.rewardPoints > 0
+                            ? cs.primary
+                            : cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+      ],
     );
   }
 }

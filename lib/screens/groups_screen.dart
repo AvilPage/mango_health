@@ -39,64 +39,31 @@ class _GroupsScreenState extends State<GroupsScreen> {
   }
 
   Future<void> _showCreateDialog() async {
-    final nameCtrl = TextEditingController();
     final result = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Create group'),
-        content: TextField(
-          controller: nameCtrl,
-          textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(
-            labelText: 'Group name',
-            border: OutlineInputBorder(),
-          ),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, nameCtrl.text),
-              child: const Text('Create')),
-        ],
+      builder: (ctx) => const _TextFieldDialog(
+        title: 'Create group',
+        labelText: 'Group name',
+        submitLabel: 'Create',
+        capitalization: TextCapitalization.words,
       ),
     );
-    // Defer dispose so the dialog close animation completes first
-    Future.microtask(nameCtrl.dispose);
     if (result == null || result.trim().isEmpty) return;
     await _createGroup(result.trim());
   }
 
   Future<void> _showJoinDialog() async {
-    final codeCtrl = TextEditingController();
     final result = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Join group'),
-        content: TextField(
-          controller: codeCtrl,
-          textCapitalization: TextCapitalization.characters,
-          maxLength: 6,
-          decoration: const InputDecoration(
-            labelText: 'Invite code',
-            hintText: 'e.g. ABC123',
-            border: OutlineInputBorder(),
-          ),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, codeCtrl.text),
-              child: const Text('Join')),
-        ],
+      builder: (ctx) => const _TextFieldDialog(
+        title: 'Join group',
+        labelText: 'Invite code',
+        hintText: 'e.g. ABC123',
+        submitLabel: 'Join',
+        capitalization: TextCapitalization.characters,
+        maxLength: 6,
       ),
     );
-    Future.microtask(codeCtrl.dispose);
     if (result == null || result.trim().isEmpty) return;
     _joinGroup(result.trim());
   }
@@ -243,6 +210,63 @@ class _GroupsScreenState extends State<GroupsScreen> {
   }
 }
 
+class _TextFieldDialog extends StatefulWidget {
+  const _TextFieldDialog({
+    required this.title,
+    required this.labelText,
+    required this.submitLabel,
+    this.hintText,
+    this.capitalization = TextCapitalization.none,
+    this.maxLength,
+  });
+
+  final String title;
+  final String labelText;
+  final String submitLabel;
+  final String? hintText;
+  final TextCapitalization capitalization;
+  final int? maxLength;
+
+  @override
+  State<_TextFieldDialog> createState() => _TextFieldDialogState();
+}
+
+class _TextFieldDialogState extends State<_TextFieldDialog> {
+  final _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
+      content: TextField(
+        controller: _ctrl,
+        textCapitalization: widget.capitalization,
+        maxLength: widget.maxLength,
+        decoration: InputDecoration(
+          labelText: widget.labelText,
+          hintText: widget.hintText,
+          border: const OutlineInputBorder(),
+        ),
+        autofocus: true,
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel')),
+        FilledButton(
+            onPressed: () => Navigator.pop(context, _ctrl.text),
+            child: Text(widget.submitLabel)),
+      ],
+    );
+  }
+}
+
 class _GroupCard extends StatelessWidget {
   const _GroupCard({required this.group, required this.onTap});
 
@@ -277,30 +301,6 @@ class _GroupCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(group.name, style: theme.textTheme.titleMedium),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        Text(
-                          'Code: ',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                              color: cs.onSurfaceVariant),
-                        ),
-                        Text(
-                          group.inviteCode,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            fontFamily: 'monospace',
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 1.5,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        GestureDetector(
-                          onTap: () => Clipboard.setData(
-                              ClipboardData(text: group.inviteCode)),
-                          child: Icon(Icons.copy, size: 14, color: cs.primary),
-                        ),
-                      ],
-                    ),
                   ],
                 ),
               ),
