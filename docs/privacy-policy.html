@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy — Mango Health</title>
+  <meta name="description" content="Privacy Policy for Mango Health app by AvilPage." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --mango: #f59e0b;
+      --mango-dark: #d97706;
+      --mango-light: #fef3c7;
+      --dark: #111827;
+      --gray: #6b7280;
+      --light: #f9fafb;
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      color: var(--dark);
+      background: var(--light);
+      line-height: 1.7;
+    }
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(255,255,255,0.9);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid #f3f4f6;
+      padding: 0 1.5rem;
+      display: flex; align-items: center; justify-content: space-between;
+      height: 60px;
+    }
+    .nav-brand {
+      display: flex; align-items: center; gap: 0.5rem;
+      font-weight: 700; font-size: 1.1rem;
+      text-decoration: none; color: var(--dark);
+    }
+    nav a.back { color: var(--mango-dark); font-size: 0.9rem; font-weight: 500; text-decoration: none; }
+    nav a.back:hover { text-decoration: underline; }
+    .container {
+      max-width: 720px;
+      margin: 2.5rem auto;
+      padding: 0 1.5rem 4rem;
+    }
+    .page-header {
+      background: linear-gradient(135deg, #fffbeb, #f0fdf4);
+      border-radius: 16px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      text-align: center;
+    }
+    .page-header h1 { font-size: 2rem; font-weight: 800; margin-bottom: 0.5rem; }
+    .page-header .meta { font-size: 0.85rem; color: var(--gray); }
+    .card {
+      background: white;
+      border-radius: 12px;
+      border: 1px solid #e5e7eb;
+      padding: 1.75rem;
+      margin-bottom: 1.25rem;
+    }
+    .card h2 {
+      font-size: 1.1rem; font-weight: 700;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 2px solid var(--mango-light);
+      color: var(--mango-dark);
+    }
+    .card p { font-size: 0.95rem; color: #374151; margin-bottom: 0.75rem; }
+    .card p:last-child { margin-bottom: 0; }
+    .card ul { margin: 0.5rem 0 0.75rem 1.25rem; }
+    .card ul li { font-size: 0.95rem; color: #374151; margin-bottom: 0.4rem; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.75rem;
+      font-size: 0.9rem;
+    }
+    th {
+      background: var(--mango-light);
+      padding: 0.6rem 0.75rem;
+      text-align: left;
+      font-weight: 600;
+      font-size: 0.85rem;
+    }
+    td {
+      padding: 0.6rem 0.75rem;
+      border-bottom: 1px solid #f3f4f6;
+      color: #374151;
+    }
+    tr:last-child td { border-bottom: none; }
+    .no-collect {
+      display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem;
+    }
+    .no-item {
+      display: flex; align-items: flex-start; gap: 0.6rem;
+      font-size: 0.9rem; color: #374151;
+    }
+    .no-item span.icon { flex-shrink: 0; font-size: 1rem; }
+    footer {
+      text-align: center;
+      padding: 1.5rem;
+      font-size: 0.8rem;
+      color: var(--gray);
+    }
+    footer a { color: var(--mango-dark); text-decoration: none; }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a class="nav-brand" href="index.html">🥭 Mango Health</a>
+    <a class="back" href="index.html">← Back</a>
+  </nav>
+
+  <div class="container">
+
+    <div class="page-header">
+      <h1>🔒 Privacy Policy</h1>
+      <p class="meta">App: <strong>Mango Health</strong> · Developer: <strong>AvilPage</strong> · Last Updated: <strong>June 2, 2026</strong></p>
+    </div>
+
+    <div class="card">
+      <h2>Overview</h2>
+      <p>Mango Health is a personal health companion app that helps you track daily steps, earn rewards, and store medical documents securely.</p>
+      <p><strong>Your privacy is a core design principle — all data stays on your device by default.</strong></p>
+    </div>
+
+    <div class="card">
+      <h2>Data We Collect</h2>
+      <p><strong>Health Data</strong></p>
+      <ul>
+        <li>Step count — read from Android Health Connect or Apple HealthKit (read-only). Stored locally on your device.</li>
+        <li>We do <strong>not</strong> write to or modify your health data.</li>
+      </ul>
+      <p><strong>Medical Documents</strong></p>
+      <ul>
+        <li>Photos and documents you capture or import are stored locally in an on-device SQLite database.</li>
+        <li>We do <strong>not</strong> upload or share your medical documents with any third party.</li>
+      </ul>
+      <p><strong>Optional Cloud Sync (PocketBase)</strong></p>
+      <ul>
+        <li>If you configure a self-hosted PocketBase server, your step data and reward points may be synced to <em>your own server</em>.</li>
+        <li>We have no access to your self-hosted server or the data on it.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Data We Do NOT Collect</h2>
+      <div class="no-collect">
+        <div class="no-item"><span class="icon">🚫</span><span>No personally identifiable information (PII) by default.</span></div>
+        <div class="no-item"><span class="icon">🚫</span><span>No third-party analytics, advertising SDKs, or crash reporting services.</span></div>
+        <div class="no-item"><span class="icon">🚫</span><span>We do not sell, rent, or share your data with any third party.</span></div>
+        <div class="no-item"><span class="icon">🚫</span><span>We do not track your location.</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Permissions</h2>
+      <table>
+        <thead>
+          <tr><th>Permission</th><th>Purpose</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>READ_STEPS</code> (Health Connect)</td><td>Read your daily step count to track activity</td></tr>
+          <tr><td><code>CAMERA</code></td><td>Capture photos of medical documents</td></tr>
+          <tr><td><code>READ_EXTERNAL_STORAGE</code> / <code>MANAGE_MEDIA</code></td><td>Import existing images from your gallery</td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:0.75rem; font-size: 0.85rem; color: var(--gray);">All permissions are requested at runtime and can be revoked at any time from your device settings.</p>
+    </div>
+
+    <div class="card">
+      <h2>Data Storage & Security</h2>
+      <ul>
+        <li>All app data is stored locally on your device using SQLite.</li>
+        <li>No data is transmitted to external servers unless you explicitly configure optional cloud sync.</li>
+        <li>Uninstalling the app removes all locally stored data.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Children's Privacy</h2>
+      <p>Mango Health is not directed at children under 13. We do not knowingly collect data from children.</p>
+    </div>
+
+    <div class="card">
+      <h2>Changes to This Policy</h2>
+      <p>We may update this policy from time to time. Continued use of the app after changes constitutes acceptance of the updated policy. The "Last Updated" date at the top reflects the most recent revision.</p>
+    </div>
+
+    <div class="card">
+      <h2>Contact</h2>
+      <p><strong>Email:</strong> <a href="mailto:support@avilpage.com">support@avilpage.com</a></p>
+      <p><strong>Website:</strong> <a href="https://avilpage.com" target="_blank">avilpage.com</a></p>
+    </div>
+
+  </div>
+
+  <footer>
+    <p>© 2026 AvilPage · <a href="index.html">Mango Health</a></p>
+  </footer>
+
+</body>
+</html>
